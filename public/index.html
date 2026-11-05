@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lenzo Music</title>
+    <style>
+        :root {
+            --bg-dark: #0a0d14;
+            --bg-card: #131927;
+            --primary: #0a84ff;
+            --primary-hover: #339dff;
+            --text-main: #ffffff;
+            --text-muted: #8b96a5;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 250px; background-color: #000; padding: 20px; display: none; flex-direction: column; gap: 20px; }
+        .logo { font-size: 24px; font-weight: bold; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        .nav-item { color: var(--text-muted); font-size: 16px; font-weight: 600; cursor: pointer; padding: 10px 0; }
+        .nav-item.active, .nav-item:hover { color: var(--text-main); }
+        
+        .main { flex: 1; background: linear-gradient(to bottom, #1a2a4c 0%, var(--bg-dark) 100%); padding: 20px; overflow-y: auto; padding-bottom: 120px; }
+        .search-bar { display: flex; gap: 10px; margin-bottom: 30px; max-width: 600px; margin-top: 20px;}
+        .search-bar input { flex: 1; padding: 15px 20px; border-radius: 30px; border: none; background: rgba(255,255,255,0.1); color: white; font-size: 16px; outline: none; }
+        .search-bar input:focus { background: rgba(255,255,255,0.2); }
+        .search-bar button { padding: 15px 30px; border-radius: 30px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; font-size: 16px; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
+        .card { background: var(--bg-card); padding: 15px; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+        .card:hover { background: #1c2537; transform: translateY(-5px); }
+        .card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; margin-bottom: 10px; }
+        .card h3 { font-size: 14px; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        .player-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 90px; background: #000; border-top: 1px solid #222; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 10; }
+        .now-playing { display: flex; align-items: center; gap: 10px; width: 40%; }
+        .now-playing img { width: 50px; height: 50px; border-radius: 8px; }
+        .now-playing-info h4 { font-size: 13px; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+        .now-playing-info p { font-size: 11px; color: var(--text-muted); }
+        
+        .controls { display: flex; align-items: center; justify-content: center; flex: 1; }
+        .play-btn { background: var(--primary); color: white; width: 45px; height: 45px; border-radius: 50%; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        
+        .progress-container { display: none; align-items: center; gap: 10px; font-size: 11px; color: var(--text-muted); width: 25%; }
+        .progress-bar { flex: 1; height: 4px; background: #333; border-radius: 2px; cursor: pointer; position: relative; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; border-radius: 2px; }
+        
+        @media (min-width: 768px) {
+            .sidebar { display: flex; }
+            .progress-container { display: flex; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">🎵 Lenzo Music</div>
+        <div class="nav-item active">Home</div>
+        <div class="nav-item">Search</div>
+    </div>
+
+    <div class="main">
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="What do you want to listen to?" onkeypress="if(event.key === 'Enter') search()">
+            <button onclick="search()">Search</button>
+        </div>
+        <div class="grid" id="resultsGrid"></div>
+    </div>
+
+    <div class="player-bar">
+        <div class="now-playing">
+            <img id="playerImg" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="cover">
+            <div class="now-playing-info">
+                <h4 id="playerTitle">Not Playing</h4>
+                <p id="playerArtist">Lenzo Music</p>
+            </div>
+        </div>
+        <div class="controls">
+            <button onclick="togglePlay()" class="play-btn" id="playBtn">▶</button>
+        </div>
+        <div class="progress-container">
+            <span id="currentTime">0:00</span>
+            <div class="progress-bar" onclick="seek(event)"><div class="progress-fill" id="progressFill"></div></div>
+            <span id="totalTime">0:00</span>
+        </div>
+    </div>
+    <audio id="audioPlayer"></audio>
+
+    <script>
+        const audio = document.getElementById('audioPlayer');
+        const playBtn = document.getElementById('playBtn');
+        const progressFill = document.getElementById('progressFill');
+        
+        async function search() {
+            const query = document.getElementById('searchInput').value;
+            if (!query) return;
+            const grid = document.getElementById('resultsGrid');
+            grid.innerHTML = '<p style="color:white;">Searching...</p>';
+
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                grid.innerHTML = '';
+                data.results.forEach(song => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.onclick = () => playSong(song.id, song.title, song.thumbnail);
+                    card.innerHTML = `<img src="${song.thumbnail}"><h3>${song.title}</h3>`;
+                    grid.appendChild(card);
+                });
+            } catch (e) {
+                grid.innerHTML = '<p style="color:red;">Search failed.</p>';
+            }
+        }
+
+        async function playSong(videoId, title, thumbnail) {
+            document.getElementById('playerTitle').innerText = title;
+            document.getElementById('playerImg').src = thumbnail;
+            playBtn.innerText = '⏳';
+
+            try {
+                const res = await fetch(`/api/stream?id=${videoId}`);
+                const data = await res.json();
+                if (data.streamUrl) {
+                    audio.src = data.streamUrl;
+                    audio.play();
+                    playBtn.innerText = '⏸';
+                }
+            } catch (e) {
+                alert("Stream error.");
+                playBtn.innerText = '▶';
+            }
+        }
+
+        function togglePlay() {
+            if (!audio.src) return;
+            if (audio.paused) { audio.play(); playBtn.innerText = '⏸'; }
+            else { audio.pause(); playBtn.innerText = '▶'; }
+        }
+
+        audio.addEventListener('timeupdate', () => {
+            if (audio.duration) {
+                progressFill.style.width = (audio.currentTime / audio.duration) * 100 + '%';
+                document.getElementById('currentTime').innerText = formatTime(audio.currentTime);
+                document.getElementById('totalTime').innerText = formatTime(audio.duration);
+            }
+        });
+
+        function formatTime(s) {
+            if (isNaN(s)) return "0:00";
+            const m = Math.floor(s / 60); const sec = Math.floor(s % 60);
+            return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        function seek(e) {
+            if (!audio.duration) return;
+            const rect = e.target.getBoundingClientRect();
+            audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+        }
+    </script>
+</body>
+</html>
